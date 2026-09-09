@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { appwriteConfig } from './lib/appwrite/config'
 
-export async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   // Protect routes that require authentication
   const protectedPaths = ['/dashboard', '/create', '/admin']
   const isProtectedPath = protectedPaths.some((path) =>

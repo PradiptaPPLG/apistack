@@ -1,5 +1,7 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createSessionClient } from '@/lib/appwrite/server'
+import { appwriteConfig } from '@/lib/appwrite/config'
+import { Query } from 'node-appwrite'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ApiCard } from '@/components/api/api-card'
@@ -49,29 +51,57 @@ const STATS = [
 ]
 
 export default async function HomePage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  // Fetch featured APIs for showcase
-  const { data: featuredApis } = await supabase
-    .from('apis')
-    .select('*, profiles(display_name, avatar_url, email)')
-    .eq('is_public', true)
-    .eq('is_featured', true)
-    .order('created_at', { ascending: false })
-    .limit(3)
-
-  // Get user favorites
+  let user = null
+  let featuredApis: any[] = []
   let userFavoriteIds: string[] = []
-  if (user) {
-    const { data: favs } = await supabase
-      .from('favorites')
-      .select('api_id')
-      .eq('user_id', user.id)
-    userFavoriteIds = favs?.map((f) => f.api_id) ?? []
+
+  try {
+    const { account, databases } = await createSessionClient()
+    
+    try { user = await account.get() } catch {}
+
+    const { documents } = await databases.listDocuments(
+      appwriteConfig.databaseId,
+      appwriteConfig.collections.apis,
+      [
+        Query.equal('is_public', true),
+        Query.equal('is_featured', true),
+        Query.orderDesc('$createdAt'),
+        Query.limit(3)
+      ]
+    )
+
+    const ownerIds = [...new Set(documents.map(d => d.owner_id))]
+    let profileMap: Record<string, any> = {}
+    if (ownerIds.length > 0) {
+      const { documents: profiles } = await databases.listDocuments(
+        appwriteConfig.databaseId,
+        appwriteConfig.collections.profiles,
+        [Query.equal('$id', ownerIds)]
+      )
+      profileMap = Object.fromEntries(profiles.map(p => [p.$id, p]))
+    }
+
+    featuredApis = documents.map(d => ({
+      ...d,
+      id: d.$id,
+      created_at: d.$createdAt,
+      profiles: profileMap[d.owner_id]
+    }))
+
+    if (user) {
+      const { documents: favs } = await databases.listDocuments(
+        appwriteConfig.databaseId,
+        appwriteConfig.collections.favorites,
+        [Query.equal('user_id', user.$id)]
+      )
+      userFavoriteIds = favs.map(f => f.api_id)
+    }
+  } catch (error) {
+    console.error('Appwrite error on home:', error)
   }
 
-  const apisWithFavorites = (featuredApis ?? []).map((api) => ({
+  const apisWithFavorites = featuredApis.map((api) => ({
     ...api,
     is_favorited: userFavoriteIds.includes(api.id),
   }))

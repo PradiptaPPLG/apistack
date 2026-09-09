@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Zap, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
@@ -9,26 +8,15 @@ import Link from 'next/link'
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const supabase = createClient()
 
   async function handleGoogleLogin() {
     setLoading(true)
     setError(null)
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
-      })
-      if (error) setError(error.message)
+      // We call our server route to initiate the OAuth flow
+      window.location.href = '/api/auth/google'
     } catch {
       setError('Failed to connect to authentication service.')
-    } finally {
       setLoading(false)
     }
   }

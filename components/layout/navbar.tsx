@@ -1,21 +1,27 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { createSessionClient } from '@/lib/appwrite/server'
+import { appwriteConfig } from '@/lib/appwrite/config'
 import { UserMenu } from './user-menu'
 import { Button } from '@/components/ui/button'
 import { Zap, Compass, Plus } from 'lucide-react'
 
 export async function Navbar() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
+  let user = null
   let profile = null
-  if (user) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single()
-    profile = data
+
+  try {
+    const { account, databases } = await createSessionClient()
+    user = await account.get()
+    
+    if (user) {
+      profile = await databases.getDocument(
+        appwriteConfig.databaseId,
+        appwriteConfig.collections.profiles,
+        user.$id
+      )
+    }
+  } catch (error) {
+    // Not logged in
   }
 
   return (

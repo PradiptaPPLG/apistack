@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Zap, Github, Twitter } from 'lucide-react'
+import { Zap } from 'lucide-react'
 
 export function Footer() {
   return (
@@ -34,9 +34,8 @@ export function Footer() {
               target="_blank"
               rel="noopener noreferrer"
               className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-              aria-label="GitHub"
             >
-              <Github size={15} />
+              GitHub
             </a>
           </nav>
         </div>

@@ -44,23 +44,31 @@ export function ApiTester({ endpoints, baseUrl, authType, authHeader }: ApiTeste
         headers[authHeader] = authType === 'bearer' ? `Bearer ${apiKey}` : apiKey
       }
 
-      const options: RequestInit = {
+      const proxyBody = {
+        url,
         method: selectedEndpoint.method,
         headers,
+        requestBody: ['POST', 'PUT', 'PATCH'].includes(selectedEndpoint.method) && requestBody ? requestBody : undefined
       }
 
-      if (['POST', 'PUT', 'PATCH'].includes(selectedEndpoint.method) && requestBody) {
-        options.body = requestBody
+      const res = await fetch('/api/proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(proxyBody),
+      })
+      
+      const result = await res.json()
+      
+      if (result.error) {
+        throw new Error(result.error)
       }
-
-      const res = await fetch(url, options)
-      setStatus(res.status)
-
-      const text = await res.text()
-      try {
-        setResponse(JSON.stringify(JSON.parse(text), null, 2))
-      } catch {
-        setResponse(text)
+      
+      setStatus(result.status)
+      
+      if (typeof result.data === 'string') {
+        setResponse(result.data)
+      } else {
+        setResponse(JSON.stringify(result.data, null, 2))
       }
     } catch (err: any) {
       setError(err.message ?? 'Request failed')

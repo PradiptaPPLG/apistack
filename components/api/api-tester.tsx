@@ -6,7 +6,18 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn, getMethodColor } from '@/lib/utils'
 import { Play, Copy, CheckCheck, Loader2, AlertCircle } from 'lucide-react'
-import type { ApiEndpoint } from '@/lib/supabase/database.types'
+interface ApiEndpoint {
+  id: string
+  api_id?: string
+  method: string
+  path: string
+  summary?: string | null
+  description?: string | null
+  request_body?: any
+  response_example?: any
+  parameters?: any
+  [key: string]: any
+}
 
 interface ApiTesterProps {
   endpoints: ApiEndpoint[]

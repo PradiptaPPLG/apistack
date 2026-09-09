@@ -3,9 +3,15 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/client'
+import { createBrowserClient } from '@/lib/appwrite/client'
 import { useRouter } from 'next/navigation'
-import type { Profile } from '@/lib/supabase/database.types'
+
+interface Profile {
+  display_name?: string | null
+  email: string
+  avatar_url?: string | null
+  role?: string | null
+}
 import { LogOut, Settings, User, LayoutDashboard, Shield } from 'lucide-react'
 
 interface UserMenuProps {
@@ -16,7 +22,7 @@ export function UserMenu({ profile }: UserMenuProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const router = useRouter()
-  const supabase = createClient()
+  const { account } = createBrowserClient()
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -29,7 +35,7 @@ export function UserMenu({ profile }: UserMenuProps) {
   }, [])
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
+    try { await account.deleteSession('current') } catch {}
     router.push('/')
     router.refresh()
   }

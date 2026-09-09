@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
-import { createClient } from '@/lib/supabase/server'
+import { createSessionClient } from '@/lib/appwrite/server'
+import { appwriteConfig } from '@/lib/appwrite/config'
 import { ApiCard, ApiCardSkeleton } from '@/components/api/api-card'
 import { ExploreFilters } from './filters'
-import { Badge } from '@/components/ui/badge'
 import { Compass, PackageSearch } from 'lucide-react'
 import { Suspense } from 'react'
+import { Query } from 'node-appwrite'
 
 export const metadata: Metadata = {
   title: 'Explore APIs',
@@ -23,64 +24,88 @@ interface ExplorePageProps {
 
 async function ApiGrid({ searchParams }: ExplorePageProps) {
   const params = await searchParams
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { account, databases } = await createSessionClient()
 
+  let user: any = null
+  try { user = await account.get() } catch {}
+
+  const { databaseId, collections } = appwriteConfig
   const PAGE_SIZE = 24
   const page = parseInt(params.page ?? '1', 10)
   const offset = (page - 1) * PAGE_SIZE
 
-  let query = supabase
-    .from('apis')
-    .select('*, profiles(display_name, avatar_url, email)', { count: 'exact' })
-    .eq('is_public', true)
+  const queries: string[] = [
+    Query.equal('is_public', true),
+    Query.limit(PAGE_SIZE),
+    Query.offset(offset),
+  ]
 
-  // Apply filters
+  // Text search (requires Full Text index on 'name' in Appwrite console)
   if (params.q) {
-    query = query.or(`name.ilike.%${params.q}%,description.ilike.%${params.q}%,tags.cs.{${params.q}}`)
+    queries.push(Query.search('name', params.q))
   }
   if (params.category) {
-    query = query.eq('category', params.category)
+    queries.push(Query.equal('category', params.category))
   }
   if (params.auth) {
-    query = query.eq('auth_type', params.auth as any)
+    queries.push(Query.equal('auth_type', params.auth))
   }
 
   // Sort
   switch (params.sort) {
     case 'oldest':
-      query = query.order('created_at', { ascending: true })
+      queries.push(Query.orderAsc('$createdAt'))
       break
     case 'name':
-      query = query.order('name', { ascending: true })
+      queries.push(Query.orderAsc('name'))
       break
     case 'endpoints':
-      query = query.order('endpoint_count', { ascending: false })
+      queries.push(Query.orderDesc('endpoint_count'))
       break
     default:
-      query = query.order('is_featured', { ascending: false }).order('created_at', { ascending: false })
+      queries.push(Query.orderDesc('is_featured'))
+      queries.push(Query.orderDesc('$createdAt'))
   }
 
-  query = query.range(offset, offset + PAGE_SIZE - 1)
+  const { documents: apiDocs, total } = await databases.listDocuments(
+    databaseId,
+    collections.apis,
+    queries
+  )
 
-  const { data: apis, count } = await query
+  // Manual join: fetch profiles for API owners
+  const ownerIds = [...new Set(apiDocs.map((d) => d.owner_id as string))]
+  const profilesMap: Record<string, any> = {}
+  if (ownerIds.length > 0) {
+    const { documents: profileDocs } = await databases.listDocuments(
+      databaseId,
+      collections.profiles,
+      [Query.equal('$id', ownerIds), Query.limit(ownerIds.length)]
+    )
+    profileDocs.forEach((p) => { profilesMap[p.$id] = p })
+  }
 
   // Get user favorites
   let userFavoriteIds: string[] = []
   if (user) {
-    const { data: favs } = await supabase
-      .from('favorites')
-      .select('api_id')
-      .eq('user_id', user.id)
-    userFavoriteIds = favs?.map((f) => f.api_id) ?? []
+    const { documents: favDocs } = await databases.listDocuments(
+      databaseId,
+      collections.favorites,
+      [Query.equal('user_id', user.$id), Query.limit(500)]
+    )
+    userFavoriteIds = favDocs.map((f) => f.api_id as string)
   }
 
-  const apisWithFavorites = (apis ?? []).map((api) => ({
-    ...api,
-    is_favorited: userFavoriteIds.includes(api.id),
+  const apis = apiDocs.map((doc) => ({
+    ...doc,
+    id: doc.$id,
+    created_at: doc.$createdAt,
+    updated_at: doc.$updatedAt,
+    profiles: profilesMap[doc.owner_id as string] ?? null,
+    is_favorited: userFavoriteIds.includes(doc.$id),
   }))
 
-  if (apisWithFavorites.length === 0) {
+  if (apis.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--surface-raised)] border border-[var(--border)] mb-4">
@@ -99,11 +124,11 @@ async function ApiGrid({ searchParams }: ExplorePageProps) {
   return (
     <div>
       <p className="text-xs text-[var(--muted-foreground)] mb-4">
-        {count ?? 0} API{count !== 1 ? 's' : ''} found
+        {total} API{total !== 1 ? 's' : ''} found
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {apisWithFavorites.map((api) => (
-          <ApiCard key={api.id} api={api as any} userId={user?.id} />
+        {apis.map((api) => (
+          <ApiCard key={api.id} api={api as any} userId={user?.$id} />
         ))}
       </div>
     </div>

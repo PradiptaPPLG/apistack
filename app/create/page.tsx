@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { createClient } from '@/lib/supabase/server'
+import { createSessionClient } from '@/lib/appwrite/server'
 import { redirect } from 'next/navigation'
 import { ApiForm } from '@/components/api/api-form'
 import { Plus } from 'lucide-react'
@@ -10,10 +10,14 @@ export const metadata: Metadata = {
 }
 
 export default async function CreateApiPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { account } = await createSessionClient()
 
-  if (!user) redirect('/login?next=/create')
+  let user = null
+  try {
+    user = await account.get()
+  } catch {
+    redirect('/login?next=/create')
+  }
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 py-10">
@@ -27,7 +31,7 @@ export default async function CreateApiPage() {
         </p>
       </div>
 
-      <ApiForm userId={user.id} mode="create" />
+      <ApiForm userId={user.$id} mode="create" />
     </div>
   )
 }

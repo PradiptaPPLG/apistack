@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { Query, ID } from 'appwrite'
+import { createBrowserClient } from '@/lib/appwrite/client'
+import { appwriteConfig } from '@/lib/appwrite/config'
 import { Heart } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
@@ -16,7 +18,7 @@ export function FavoriteButton({ apiId, userId, isFavorited: initialFavorited }:
   const [favorited, setFavorited] = useState(initialFavorited)
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
+  const { databases } = createBrowserClient()
 
   async function toggle(e: React.MouseEvent) {
     e.preventDefault()
@@ -26,15 +28,30 @@ export function FavoriteButton({ apiId, userId, isFavorited: initialFavorited }:
 
     try {
       if (favorited) {
-        await supabase
-          .from('favorites')
-          .delete()
-          .eq('user_id', userId)
-          .eq('api_id', apiId)
+        // Find the favorite document first, then delete it
+        const { documents } = await databases.listDocuments(
+          appwriteConfig.databaseId,
+          appwriteConfig.collections.favorites,
+          [
+            Query.equal('user_id', userId),
+            Query.equal('api_id', apiId),
+            Query.limit(1),
+          ]
+        )
+        if (documents.length > 0) {
+          await databases.deleteDocument(
+            appwriteConfig.databaseId,
+            appwriteConfig.collections.favorites,
+            documents[0].$id
+          )
+        }
       } else {
-        await supabase
-          .from('favorites')
-          .insert({ user_id: userId, api_id: apiId })
+        await databases.createDocument(
+          appwriteConfig.databaseId,
+          appwriteConfig.collections.favorites,
+          ID.unique(),
+          { user_id: userId, api_id: apiId }
+        )
       }
       router.refresh()
     } catch {

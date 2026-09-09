@@ -1,15 +1,16 @@
 import type { Metadata } from 'next'
-import { createClient } from '@/lib/supabase/server'
+import { createSessionClient } from '@/lib/appwrite/server'
+import { appwriteConfig } from '@/lib/appwrite/config'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ApiCard, ApiCardSkeleton } from '@/components/api/api-card'
+import { ApiCard } from '@/components/api/api-card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Query } from 'node-appwrite'
 import {
   Plus, LayoutDashboard, Heart, Globe, Lock,
   Zap, TrendingUp, PackageSearch
 } from 'lucide-react'
-import { formatDate } from '@/lib/utils'
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -17,41 +18,82 @@ export const metadata: Metadata = {
 }
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { account, databases } = await createSessionClient()
 
-  if (!user) redirect('/login')
+  let user: any = null
+  try {
+    user = await account.get()
+  } catch {
+    redirect('/login')
+  }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  const { databaseId, collections } = appwriteConfig
+
+  // Fetch profile
+  let profile: any = null
+  try {
+    profile = await databases.getDocument(databaseId, collections.profiles, user.$id)
+  } catch {}
 
   // Fetch user's APIs
-  const { data: myApis } = await supabase
-    .from('apis')
-    .select('*, profiles(display_name, avatar_url, email)')
-    .eq('owner_id', user.id)
-    .order('created_at', { ascending: false })
+  const { documents: apiDocs } = await databases.listDocuments(
+    databaseId,
+    collections.apis,
+    [Query.equal('owner_id', user.$id), Query.orderDesc('$createdAt'), Query.limit(100)]
+  )
+  const myApis = apiDocs.map((doc) => ({
+    ...doc,
+    id: doc.$id,
+    created_at: doc.$createdAt,
+    updated_at: doc.$updatedAt,
+    profiles: { display_name: profile?.display_name, avatar_url: profile?.avatar_url, email: user.email },
+  }))
 
   // Fetch favorites
-  const { data: favorites } = await supabase
-    .from('favorites')
-    .select('api_id, apis(*, profiles(display_name, avatar_url, email))')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
+  const { documents: favDocs } = await databases.listDocuments(
+    databaseId,
+    collections.favorites,
+    [Query.equal('user_id', user.$id), Query.orderDesc('$createdAt'), Query.limit(100)]
+  )
 
-  const favoriteApis = (favorites ?? [])
-    .map((f) => f.apis)
-    .filter(Boolean) as any[]
+  // Fetch favorite APIs
+  let favoriteApis: any[] = []
+  if (favDocs.length > 0) {
+    const favApiIds = favDocs.map((f) => f.api_id as string)
+    const { documents: favApiDocs } = await databases.listDocuments(
+      databaseId,
+      collections.apis,
+      [Query.equal('$id', favApiIds), Query.limit(favApiIds.length)]
+    )
+
+    // Fetch profiles for favorite API owners
+    const ownerIds = [...new Set(favApiDocs.map((d) => d.owner_id as string))]
+    const profilesMap: Record<string, any> = {}
+    if (ownerIds.length > 0) {
+      const { documents: profileDocs } = await databases.listDocuments(
+        databaseId,
+        collections.profiles,
+        [Query.equal('$id', ownerIds), Query.limit(ownerIds.length)]
+      )
+      profileDocs.forEach((p) => { profilesMap[p.$id] = p })
+    }
+
+    favoriteApis = favApiDocs.map((doc) => ({
+      ...doc,
+      id: doc.$id,
+      created_at: doc.$createdAt,
+      updated_at: doc.$updatedAt,
+      profiles: profilesMap[doc.owner_id as string] ?? null,
+      is_favorited: true,
+    }))
+  }
 
   const stats = {
-    totalApis: myApis?.length ?? 0,
-    publicApis: myApis?.filter((a) => a.is_public).length ?? 0,
-    privateApis: myApis?.filter((a) => !a.is_public).length ?? 0,
-    totalFavorites: favorites?.length ?? 0,
-    totalEndpoints: myApis?.reduce((sum, api) => sum + (api.endpoint_count ?? 0), 0) ?? 0,
+    totalApis: myApis.length,
+    publicApis: myApis.filter((a) => a.is_public).length,
+    privateApis: myApis.filter((a) => !a.is_public).length,
+    totalFavorites: favDocs.length,
+    totalEndpoints: myApis.reduce((sum, api) => sum + (api.endpoint_count ?? 0), 0),
   }
 
   return (
@@ -109,14 +151,12 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {!myApis || myApis.length === 0 ? (
+        {myApis.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-[var(--border)] border-dashed bg-[var(--surface)] py-16 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface-raised)] border border-[var(--border)] mb-4">
               <PackageSearch size={24} className="text-[var(--muted-foreground)]" />
             </div>
-            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-2">
-              No APIs yet
-            </h3>
+            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-2">No APIs yet</h3>
             <p className="text-xs text-[var(--muted-foreground)] mb-4 max-w-xs">
               Publish your first API to the ApiStack library and share it with the developer community.
             </p>
@@ -131,7 +171,7 @@ export default async function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {myApis.map((api) => (
               <div key={api.id} className="relative group">
-                <ApiCard api={api as any} userId={user.id} />
+                <ApiCard api={api as any} userId={user.$id} />
                 {/* Edit overlay */}
                 <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                   <Link href={`/apis/${api.slug}/edit`}>
@@ -166,7 +206,7 @@ export default async function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {favoriteApis.map((api) => (
-              <ApiCard key={api.id} api={api} userId={user.id} />
+              <ApiCard key={api.id} api={api} userId={user.$id} />
             ))}
           </div>
         )}

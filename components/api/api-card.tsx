@@ -2,8 +2,27 @@ import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Star, Globe, Lock, Zap, Heart } from 'lucide-react'
 import { cn, truncate, formatRelativeDate } from '@/lib/utils'
-import type { ApiWithFavorite } from '@/lib/supabase/database.types'
 import { FavoriteButton } from './favorite-button'
+
+interface ApiWithFavorite {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  category: string
+  tags?: string[] | null
+  auth_type: string
+  base_url: string
+  version: string
+  is_public: boolean
+  is_featured?: boolean
+  endpoint_count: number
+  created_at: string
+  owner_id: string
+  profiles?: { display_name?: string | null; email?: string | null; avatar_url?: string | null } | null
+  is_favorited?: boolean
+  [key: string]: any
+}
 
 interface ApiCardProps {
   api: ApiWithFavorite

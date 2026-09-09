@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { Query, ID } from 'appwrite'
+import { createBrowserClient } from '@/lib/appwrite/client'
+import { appwriteConfig } from '@/lib/appwrite/config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -13,14 +15,17 @@ import {
   Plus, X, Trash2, ChevronDown, ChevronUp,
   Globe, Lock, AlertCircle, CheckCircle2, Zap
 } from 'lucide-react'
-import type { Database } from '@/lib/supabase/database.types'
 
-type ApiInsert = Database['public']['Tables']['apis']['Insert']
-type EndpointInsert = Omit<Database['public']['Tables']['api_endpoints']['Insert'], 'api_id'>
-
-interface EndpointForm extends EndpointInsert {
+interface EndpointForm {
   tempId: string
   expanded: boolean
+  method: string
+  path: string
+  summary: string | null
+  description: string | null
+  request_body: any
+  response_example: any
+  parameters: any
 }
 
 interface ApiFormProps {
@@ -31,7 +36,7 @@ interface ApiFormProps {
 
 export function ApiForm({ userId, initialData, mode }: ApiFormProps) {
   const router = useRouter()
-  const supabase = createClient()
+  const { databases } = createBrowserClient()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -53,7 +58,7 @@ export function ApiForm({ userId, initialData, mode }: ApiFormProps) {
   const [endpoints, setEndpoints] = useState<EndpointForm[]>(
     initialData?.api_endpoints?.map((e: any) => ({
       ...e,
-      tempId: e.id,
+      tempId: e.id ?? e.$id ?? Math.random().toString(36).slice(2),
       expanded: false,
     })) ?? []
   )
@@ -119,8 +124,10 @@ export function ApiForm({ userId, initialData, mode }: ApiFormProps) {
     setLoading(true)
     setError(null)
 
+    const { databaseId, collections } = appwriteConfig
+
     try {
-      const apiData: ApiInsert = {
+      const apiData = {
         owner_id: userId,
         name: name.trim(),
         slug: slug.trim(),
@@ -129,7 +136,7 @@ export function ApiForm({ userId, initialData, mode }: ApiFormProps) {
         category,
         tags,
         base_url: baseUrl.trim(),
-        auth_type: authType as any,
+        auth_type: authType,
         auth_header: authHeader.trim() || null,
         version: version.trim(),
         documentation_url: documentationUrl.trim() || null,
@@ -141,39 +148,52 @@ export function ApiForm({ userId, initialData, mode }: ApiFormProps) {
       let apiId: string
 
       if (mode === 'create') {
-        const { data, error: insertError } = await supabase
-          .from('apis')
-          .insert(apiData)
-          .select('id')
-          .single()
-
-        if (insertError) throw insertError
-        apiId = data.id
+        const doc = await databases.createDocument(
+          databaseId,
+          collections.apis,
+          ID.unique(),
+          apiData
+        )
+        apiId = doc.$id
       } else {
         const { owner_id, ...updateData } = apiData
-        const { error: updateError } = await supabase
-          .from('apis')
-          .update(updateData as any)
-          .eq('id', initialData.id)
-          .eq('owner_id', userId)
-
-        if (updateError) throw updateError
+        await databases.updateDocument(
+          databaseId,
+          collections.apis,
+          initialData.id,
+          updateData
+        )
         apiId = initialData.id
 
-        // Delete existing endpoints and re-insert
-        await supabase.from('api_endpoints').delete().eq('api_id', apiId)
+        // Delete all existing endpoints for this API
+        const { documents: existingEps } = await databases.listDocuments(
+          databaseId,
+          collections.apiEndpoints,
+          [Query.equal('api_id', apiId), Query.limit(200)]
+        )
+        await Promise.all(
+          existingEps.map((ep) =>
+            databases.deleteDocument(databaseId, collections.apiEndpoints, ep.$id)
+          )
+        )
       }
 
-      // Insert endpoints
+      // Insert new endpoints
       if (endpoints.length > 0) {
         const endpointsToInsert = endpoints.map(({ tempId, expanded, ...ep }) => ({
           ...ep,
           api_id: apiId,
         }))
-        const { error: epError } = await supabase
-          .from('api_endpoints')
-          .insert(endpointsToInsert)
-        if (epError) throw epError
+        await Promise.all(
+          endpointsToInsert.map((ep) =>
+            databases.createDocument(
+              databaseId,
+              collections.apiEndpoints,
+              ID.unique(),
+              ep
+            )
+          )
+        )
       }
 
       setSuccess(true)
@@ -441,7 +461,7 @@ export function ApiForm({ userId, initialData, mode }: ApiFormProps) {
         <div className="p-5 space-y-3">
           {endpoints.length === 0 && (
             <p className="text-center py-8 text-xs text-[var(--muted-foreground)]">
-              No endpoints yet. Click "Add Endpoint" to document your API routes.
+              No endpoints yet. Click &quot;Add Endpoint&quot; to document your API routes.
             </p>
           )}
 

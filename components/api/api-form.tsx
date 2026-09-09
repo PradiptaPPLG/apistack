@@ -150,9 +150,10 @@ export function ApiForm({ userId, initialData, mode }: ApiFormProps) {
         if (insertError) throw insertError
         apiId = data.id
       } else {
+        const { owner_id, ...updateData } = apiData
         const { error: updateError } = await supabase
           .from('apis')
-          .update(apiData)
+          .update(updateData as any)
           .eq('id', initialData.id)
           .eq('owner_id', userId)
 

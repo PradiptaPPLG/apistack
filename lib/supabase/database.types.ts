@@ -36,6 +36,7 @@ export interface Database {
           role?: 'user' | 'admin'
           updated_at?: string
         }
+        Relationships: []
       }
       apis: {
         Row: {
@@ -95,6 +96,15 @@ export interface Database {
           documentation_url?: string | null
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "apis_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       api_endpoints: {
         Row: {
@@ -130,6 +140,15 @@ export interface Database {
           response_example?: Json | null
           parameters?: Json | null
         }
+        Relationships: [
+          {
+            foreignKeyName: "api_endpoints_api_id_fkey"
+            columns: ["api_id"]
+            isOneToOne: false
+            referencedRelation: "apis"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       favorites: {
         Row: {
@@ -145,6 +164,22 @@ export interface Database {
           created_at?: string
         }
         Update: never
+        Relationships: [
+          {
+            foreignKeyName: "favorites_api_id_fkey"
+            columns: ["api_id"]
+            isOneToOne: false
+            referencedRelation: "apis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "favorites_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
       }
     }
     Views: {}
@@ -153,7 +188,6 @@ export interface Database {
   }
 }
 
-// Convenience types
 export type Profile = Database['public']['Tables']['profiles']['Row']
 export type Api = Database['public']['Tables']['apis']['Row']
 export type ApiEndpoint = Database['public']['Tables']['api_endpoints']['Row']

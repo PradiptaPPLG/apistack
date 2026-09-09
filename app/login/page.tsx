@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Zap, Chrome, AlertCircle } from 'lucide-react'
+import { Zap, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 
 export default function LoginPage() {

@@ -43,7 +43,7 @@ async function ApiGrid({ searchParams }: ExplorePageProps) {
     query = query.eq('category', params.category)
   }
   if (params.auth) {
-    query = query.eq('auth_type', params.auth)
+    query = query.eq('auth_type', params.auth as any)
   }
 
   // Sort

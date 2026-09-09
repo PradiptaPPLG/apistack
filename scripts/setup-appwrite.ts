@@ -1,4 +1,4 @@
-import { Client, Databases, ID } from 'node-appwrite'
+import { Client, Databases, ID, IndexType } from 'node-appwrite'
 import 'dotenv/config'
 
 const endpoint = process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1'
@@ -66,7 +66,7 @@ async function setupDatabase() {
       
       // Index for slug
       await new Promise(r => setTimeout(r, 2000)) // Wait for attributes to be created
-      try { await databases.createIndex(databaseId, 'apis', 'slug_idx', 'unique', ['slug']) } catch (e) {}
+      try { await databases.createIndex(databaseId, 'apis', 'slug_idx', IndexType.Unique, ['slug']) } catch (e) {}
     } catch (e: any) {
       if (e.code === 409) console.log('APIs collection already exists.')
       else throw e
@@ -87,7 +87,7 @@ async function setupDatabase() {
       await databases.createStringAttribute(databaseId, 'api_endpoints', 'parameters', 10000, false)
       
       await new Promise(r => setTimeout(r, 2000))
-      try { await databases.createIndex(databaseId, 'api_endpoints', 'api_id_idx', 'key', ['api_id']) } catch (e) {}
+      try { await databases.createIndex(databaseId, 'api_endpoints', 'api_id_idx', IndexType.Key, ['api_id']) } catch (e) {}
     } catch (e: any) {
       if (e.code === 409) console.log('API Endpoints collection already exists.')
       else throw e
@@ -102,7 +102,7 @@ async function setupDatabase() {
       await databases.createStringAttribute(databaseId, 'favorites', 'api_id', 255, true)
       
       await new Promise(r => setTimeout(r, 2000))
-      try { await databases.createIndex(databaseId, 'favorites', 'user_api_idx', 'unique', ['user_id', 'api_id']) } catch (e) {}
+      try { await databases.createIndex(databaseId, 'favorites', 'user_api_idx', IndexType.Unique, ['user_id', 'api_id']) } catch (e) {}
     } catch (e: any) {
       if (e.code === 409) console.log('Favorites collection already exists.')
       else throw e
